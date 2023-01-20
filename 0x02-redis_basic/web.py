@@ -1,30 +1,38 @@
 #!/usr/bin/env python3
-"""
-Implementing a web cache
-"""
-
-from time import sleep
-from typing import Callable
+'''A module with tools for request caching and tracking.
+'''
 import redis
-from functools import wraps
 import requests
+from functools import wraps
+from typing import Callable
 
 
-def url_count(method: Callable) -> Callable:
-    """Wrapper function to count frequency of url"""
+redis_store = redis.Redis()
+'''The module-level Redis instance.
+'''
+
+
+def data_cacher(method: Callable) -> Callable:
+    '''Caches the output of fetched data.
+    '''
     @wraps(method)
-    def count_wrapper(*args):
-        """Callback function to be returned"""
-        cache = redis.Redis()
-        key = "count:" + args[0]
-        cache.incrby(key, 1)
-        cache.expire(key, 10)
-        return method
-    return count_wrapper
+    def invoker(url) -> str:
+        '''The wrapper function for caching the output.
+        '''
+        redis_store.incr(f'count:{url}')
+        result = redis_store.get(f'result:{url}')
+        if result:
+            return result.decode('utf-8')
+        result = method(url)
+        redis_store.set(f'count:{url}', 0)
+        redis_store.setex(f'result:{url}', 10, result)
+        return result
+    return invoker
 
 
-@url_count
+@data_cacher
 def get_page(url: str) -> str:
-    """Web cache and tracker"""
-    res = requests.get(url)
-    return res
+    '''Returns the content of a URL after caching the request's response,
+    and tracking the request.
+    '''
+    return requests.get(url).text
