@@ -1,46 +1,26 @@
-#!/usr/bin/env python3
-"""
-a python module to obtain the HTML content of a particular
-URL & returns it
-"""
-import redis
 import requests
-from functools import wraps
+import time
+import redis
 
+r = redis.Redis(host='localhost', port=6379, db=0)
 
-def cache_page(method: callable) -> callable:
-    """
-    cache_page - function to cache a given url
-    Arguments:
-        the given function
-    Returns:
-        the function passed as argument
-    """
-    obj = redis.Redis()
-
-    @wraps(method)
-    def wrapper(args):
-        """ a wrapper function to return a page &
-        increment the number of times the page has accessed
-        """
-        obj.incr("count:{}" + args)
-        in_cache = obj.get("cached_page" + args)
-        if in_cache:
-            return in_cache.decode("utf-8")
-        html = method(args)
-        obj.set("cached_page:" + args, html, 10)
-        return html
-    return wrapper
-
-
-@cache_page
 def get_page(url: str) -> str:
-    """
-    get_page - function to get page & returns it
-    Arguments:
-        url: the given url
-    Returns:
-        the obtained html page
-    """
-    html = requests.get(url).text
+    count_key = f"count:{url}"
+    content_key = f"content:{url}"
+
+    # Check if the URL has been accessed before
+    if r.exists(count_key):
+        r.incr(count_key)
+    else:
+        r.set(count_key, 1)
+
+    # Check if the HTML content is cached
+    if r.exists(content_key):
+        html = r.get(content_key)
+    else:
+        # Get HTML content from the URL
+        response = requests.get(url)
+        html = response.text
+        r.set(content_key, html, ex=10)
+
     return html
