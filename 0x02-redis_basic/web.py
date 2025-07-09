@@ -1,44 +1,42 @@
 #!/usr/bin/env python3
 """
-Module to fetch and cache HTML pages using Redis.
+Fetch and cache HTML content using Redis.
 """
 
-import redis
 import requests
+import redis
 from functools import wraps
 from typing import Callable
 
+# Connect to Redis
 r = redis.Redis()
 
-
-def count_access(method: Callable) -> Callable:
-    """Decorator that counts how many times a URL is accessed."""
-    @wraps(method)
+def count_access(func: Callable) -> Callable:
+    """Decorator to count accesses per URL"""
+    @wraps(func)
     def wrapper(url: str) -> str:
-        r.incr(f"count:{url}")
-        return method(url)
+        r.incr(f"count:{url}")  # increment access count
+        return func(url)
     return wrapper
 
-
-def cache_result(expiration: int = 10) -> Callable:
-    """Decorator that caches the result of a URL fetch for a set time."""
-    def decorator(method: Callable) -> Callable:
-        @wraps(method)
+def cache_page(expire: int = 10) -> Callable:
+    """Decorator to cache HTML result for 10 seconds"""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
         def wrapper(url: str) -> str:
             key = f"cached:{url}"
-            cached = r.get(key)
-            if cached:
-                return cached.decode("utf-8")
-            result = method(url)
-            r.setex(key, expiration, result)
+            cached_html = r.get(key)
+            if cached_html:
+                return cached_html.decode('utf-8')  # return cached result
+            result = func(url)
+            r.setex(key, expire, result)  # cache with expiration
             return result
         return wrapper
     return decorator
 
-
 @count_access
-@cache_result(expiration=10)
+@cache_page(expire=10)
 def get_page(url: str) -> str:
-    """Fetch the HTML content of a URL and return it."""
+    """Get HTML content of a URL"""
     response = requests.get(url)
     return response.text
